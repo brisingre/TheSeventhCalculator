@@ -105,7 +105,13 @@ public class DrawOddsGrid : MonoBehaviour
 		{
 			for (int j = 0; j < height; j++)
 			{
-				resultBoxes[i, j].SetValue(data[i + cardStart, j + starStart]);
+				try { 
+					resultBoxes[i, j].SetValue(data[i + cardStart, j + starStart]);
+				}
+				catch
+				{
+					resultBoxes[i, j].SetValue(-1);
+				}
 			}
 		}
 	}

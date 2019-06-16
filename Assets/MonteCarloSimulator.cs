@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System;
-
+using Sirenix.OdinInspector;
 
 public class MonteCard
 {
@@ -14,10 +14,11 @@ public class MonteCard
 
 	public bool curse;
 	public bool amulet;
+	public bool root;
 
 	System.Random random;
 
-	public MonteCard(int stars, int sevens, bool left, bool right, bool curse, bool amulet)
+	public MonteCard(int stars, int sevens, bool left, bool right, bool curse, bool amulet, bool root)
 	{
 		this.stars = stars;
 		this.sevens = sevens;
@@ -25,6 +26,7 @@ public class MonteCard
 		this.right = right;
 		this.curse = curse;
 		this.amulet = amulet;
+		this.root = root;
 	}
 }
 
@@ -36,17 +38,28 @@ public class StarCount
 
 	public int RequiredByInfinity = -1; //If a check can only be succeeded by things that succed it automatically, it has infinite difficulty.
 
-	public StarCount(List<int> starsByDepth, List<int> requiredByDifficulty, int requiredByInfinity)
+	public List<bool> SafetyByDepth = new List<bool>(); //StarsByDepth[i] is how many stars you'd get if you drew i cards
+
+
+	public StarCount(List<int> starsByDepth, List<int> requiredByDifficulty, int requiredByInfinity, List<bool> safetyByDepth)
 	{
 		StarsByDepth = starsByDepth;
 		RequiredByDifficulty = requiredByDifficulty;
 		RequiredByInfinity = requiredByInfinity;
+		SafetyByDepth = safetyByDepth;
 	}
 
 	public bool PassesCheck(int draws, int difficulty)
 	{
 		if (difficulty >= RequiredByDifficulty.Count)
 			return false;
+
+		if (draws > SafetyByDepth.Count)
+			return false;
+
+		if (SafetyByDepth[draws] == false)
+			return false;
+
 
 		if (RequiredByDifficulty[difficulty] <= draws)
 			return true;
@@ -91,6 +104,9 @@ public class MonteCarloSimulator : MonoBehaviour
 	public int sevenStars;
 	public int extraStars;
 	public CurseBehavior curseBehavior = CurseBehavior.NORMAL;
+	public bool amuletAutoSucceed;
+	public bool rootAutoFail;
+
 	System.Random chaos;
 	public string debug = "";
 
@@ -98,10 +114,26 @@ public class MonteCarloSimulator : MonoBehaviour
 
 	public DrawOddsGrid drawOddsGrid;
 
+	public int simulatedShuffles = 100000;
+
 	void Start()
     {
 		chaos = new System.Random();
-		RunSimulations(133337);
+		
+		/*for (int i = 0; i < starCounts[0].StarsByDepth.Count; i++)
+		{
+			debug += starCounts[0].StarsByDepth[i].ToString();
+			debug += ", ";
+		}*/
+
+	}
+
+	[Button]
+	void Simulate()
+	{
+		simulations.Clear();
+
+		RunSimulations(simulatedShuffles);
 		Debug.Log(simulations.Count);
 		starCounts = CountStars(sevenStars, extraStars, curseBehavior);
 
@@ -116,16 +148,10 @@ public class MonteCarloSimulator : MonoBehaviour
 			debug += line + "\n";
 		}
 
-		Debug.Log(percentages[0, 0]);
-		Debug.Log(percentages[0, 1]);
-		Debug.Log(percentages[0, 2]);
+		//Debug.Log(percentages[0, 0]);
+		//Debug.Log(percentages[0, 1]);
+		//Debug.Log(percentages[0, 2]);
 		drawOddsGrid.DisplayData(percentages);
-		/*for (int i = 0; i < starCounts[0].StarsByDepth.Count; i++)
-		{
-			debug += starCounts[0].StarsByDepth[i].ToString();
-			debug += ", ";
-		}*/
-
 	}
 
     void Update()
@@ -161,6 +187,8 @@ public class MonteCarloSimulator : MonoBehaviour
 
 	void RunSimulations(int count)
 	{
+		if (chaos == null)
+			chaos = new System.Random();
 		GenerateMasterDeck();
 		for (int i = 0; i < count; i++)
 		{
@@ -175,6 +203,7 @@ public class MonteCarloSimulator : MonoBehaviour
 	{
 		List<int> StarsByDepth = new List<int>();
 		List<int> RequiredByDifficulty = new List<int>();
+		List<bool> SafetyByDepth = new List<bool>();
 
 		int totalStars = extraStars;
 
@@ -212,11 +241,18 @@ public class MonteCarloSimulator : MonoBehaviour
 				}
 			}
 
+			if(card.root && rootAutoFail)
+			{
+				failed = true;
+			}
+
 			if (card.amulet)
 			{
 				totalStars++;
-				if (successIndex == -1)
+				if (amuletAutoSucceed && successIndex == -1)
+				{
 					successIndex = i;
+				}
 			}
 
 
@@ -240,7 +276,7 @@ public class MonteCarloSimulator : MonoBehaviour
 			int totalAtDepthI = halfTotal + totalStars;
 
 			StarsByDepth.Add(totalAtDepthI);
-
+			SafetyByDepth.Add(!failed || successIndex > -1);
 			if(successIndex > -1)
 			{
 				while(RequiredByDifficulty.Count < totalAtDepthI)
@@ -255,9 +291,11 @@ public class MonteCarloSimulator : MonoBehaviour
 					RequiredByDifficulty.Add(i);
 				}
 			}
+
+			
 		}
 
-		StarCount count = new StarCount(StarsByDepth, RequiredByDifficulty, successIndex);
+		StarCount count = new StarCount(StarsByDepth, RequiredByDifficulty, successIndex, SafetyByDepth);
 		return count;
 	}
 
@@ -271,11 +309,22 @@ public class MonteCarloSimulator : MonoBehaviour
 		return retVal;
 	}
 
+	int GetMaxSuccesses(List<StarCount> starCounts)
+	{
+		int retVal = 0;
+		foreach (StarCount count in starCounts)
+			if (count.MaxSuccesses > retVal)
+				retVal = count.MaxSuccesses;
+		return retVal;
+	}
+
 	float[,] CalculateAverages(List<StarCount> starCounts)
 	{
 		List<float> totalStarsByDepth = new List<float>();
 
-		float[,] passPercentages = new float[starCounts[0].DeckSize, starCounts[0].MaxSuccesses]; //[x, y] is the chance of success at draws, difficulty
+		int maxSuccesses = GetMaxSuccesses(starCounts);
+
+		float[,] passPercentages = new float[starCounts[0].DeckSize, maxSuccesses]; //[x, y] is the chance of success at draws, difficulty
 
 		float threefive = 0;
 
@@ -306,16 +355,20 @@ public class MonteCarloSimulator : MonoBehaviour
 			totalStarsByDepth[i] /= starCounts.Count;
 		}
 
-		for (int i = 0; i < passPercentages.GetLength(0); i++)
+		if(true)
 		{
 
-			for (int j = 0; j < passPercentages.GetLength(1); j++)
+			for (int i = 0; i < passPercentages.GetLength(0); i++)
 			{
-				passPercentages[i, j] /= starCounts.Count;
-				passPercentages[i, j] *= 100;
-			}
-		}
 
+				for (int j = 0; j < passPercentages.GetLength(1); j++)
+				{
+					passPercentages[i, j] /= starCounts.Count;
+					passPercentages[i, j] *= 100;
+				}
+			}
+
+		}
 		threefive /= starCounts.Count;
 		threefive *= 100;
 

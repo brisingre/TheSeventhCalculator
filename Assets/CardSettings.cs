@@ -7,6 +7,7 @@ public class CardSettings : MonoBehaviour
 {
 	public bool curse;
 	public bool amulet;
+	public bool root;
 	public bool right;
 	public bool left;
 	[Range(0, 3)]
@@ -23,6 +24,7 @@ public class CardSettings : MonoBehaviour
 	public HalfStarToggle leftHalf;
 	public HalfStarToggle curseBackground;
 	public HalfStarToggle amuletStar;
+	public HalfStarToggle amuletBG;
 	public TMP_InputField countField;
 
 	void Start()
@@ -48,6 +50,8 @@ public class CardSettings : MonoBehaviour
 
 		if (amuletStar != null)
 			amuletStar.SetState(amulet);
+		if (amuletBG != null)
+			amuletBG.SetState(amulet || root);
 
 		if (stars + sevens > starToggles.Count)
 			Debug.LogError("Not enough seven/star toggles!");
@@ -99,7 +103,7 @@ public class CardSettings : MonoBehaviour
 
 		for (int i = 0; i < count; i++)
 		{
-			retVal.Add(new MonteCard(stars, sevens, left, right, curse, amulet));
+			retVal.Add(new MonteCard(stars, sevens, left, right, curse, amulet, root));
 		}
 
 		return retVal;
